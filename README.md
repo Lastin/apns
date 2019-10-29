@@ -1,12 +1,15 @@
 # apns
 
+This is a clone of apns repo.
+Modifies the response time to reduce lambda cost.
+
 Utilities for Apple Push Notification and Feedback Services.
 
 [![GoDoc](https://godoc.org/github.com/anachronistic/apns?status.png)](https://godoc.org/github.com/anachronistic/apns)
 
 ## Installation
 
-`go get github.com/anachronistic/apns`
+`go get github.com/Lastin/apns`
 
 ## Documentation
 
@@ -23,7 +26,7 @@ package main
 
 import (
   "fmt"
-  apns "github.com/anachronistic/apns"
+  apns "github.com/Lastin/apns"
 )
 
 func main() {
@@ -57,7 +60,7 @@ package main
 
 import (
   "fmt"
-  apns "github.com/anachronistic/apns"
+  apns "github.com/Lastin/apns"
 )
 
 func main() {
@@ -109,7 +112,7 @@ package main
 
 import (
   "fmt"
-  apns "github.com/anachronistic/apns"
+  apns "github.com/Lastin/apns"
 )
 
 func main() {
@@ -150,7 +153,7 @@ package main
 
 import (
   "fmt"
-  apns "github.com/anachronistic/apns"
+  apns "github.com/Lastin/apns"
 )
 
 func main() {
@@ -186,7 +189,7 @@ package main
 
 import (
   "fmt"
-  apns "github.com/anachronistic/apns"
+  apns "github.com/Lastin/apns"
   "os"
 )
 
