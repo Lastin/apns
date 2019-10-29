@@ -133,7 +133,7 @@ func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payload []
 	// timeouts when the notification succeeds.
 	timeoutChannel := make(chan bool, 1)
 	go func() {
-		time.Sleep(time.Second * TimeoutSeconds)
+		time.Sleep(time.Duration(float64(time.Second) * TimeoutSeconds))
 		timeoutChannel <- true
 	}()
 
