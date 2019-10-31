@@ -12,8 +12,8 @@ var _ APNSClient = &Client{}
 
 // APNSClient is an APNS client.
 type APNSClient interface {
-	ConnectAndWrite(resp *PushNotificationResponse, payload []byte) (err error)
-	Send(pn *PushNotification) (resp *PushNotificationResponse)
+	ConnectAndWrite(resp *PushNotificationResponse, payloads [][]byte) (err error)
+	Send(pn []*PushNotification) (resp *PushNotificationResponse, successCount int)
 }
 
 // Client contains the fields necessary to communicate
@@ -56,17 +56,22 @@ func NewClient(gateway, certificateFile, keyFile string) (c *Client) {
 
 // Send connects to the APN service and sends your push notification.
 // Remember that if the submission is successful, Apple won't reply.
-func (client *Client) Send(pn *PushNotification) (resp *PushNotificationResponse) {
+func (client *Client) Send(pn []*PushNotification) (resp *PushNotificationResponse, successCount int) {
 	resp = new(PushNotificationResponse)
 
-	payload, err := pn.ToBytes()
-	if err != nil {
-		resp.Success = false
-		resp.Error = err
-		return
+	payloads := make([][]byte, len(pn))
+	for e := range pn {
+		payload, err := pn[e].ToBytes()
+		if err != nil {
+			resp.Success = false
+			resp.Error = err
+			return
+		}
+		payloads[e] = payload
 	}
 
-	err = client.ConnectAndWrite(resp, payload)
+
+	successCount, err := client.ConnectAndWrite(resp, payloads)
 	if err != nil {
 		resp.Success = false
 		resp.Error = err
@@ -76,7 +81,7 @@ func (client *Client) Send(pn *PushNotification) (resp *PushNotificationResponse
 	resp.Success = true
 	resp.Error = nil
 
-	return
+	return resp, successCount
 }
 
 // ConnectAndWrite establishes the connection to Apple and handles the
@@ -90,7 +95,7 @@ func (client *Client) Send(pn *PushNotification) (resp *PushNotificationResponse
 // Whichever channel puts data on first is the "winner". As such, it's
 // possible to get a false positive if Apple takes a long time to respond.
 // It's probably not a deal-breaker, but something to be aware of.
-func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payload []byte) (err error) {
+func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payloads [][]byte) (successCount int, err error) {
 	var cert tls.Certificate
 
 	if len(client.CertificateBase64) == 0 && len(client.KeyBase64) == 0 {
@@ -102,7 +107,7 @@ func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payload []
 	}
 
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	gatewayParts := strings.Split(client.Gateway, ":")
@@ -113,27 +118,59 @@ func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payload []
 
 	conn, err := net.Dial("tcp", client.Gateway)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer conn.Close()
 
 	tlsConn := tls.Client(conn, conf)
 	err = tlsConn.Handshake()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tlsConn.Close()
 
+	failCount := 0
+	completionChannel := make(chan bool, 1)
+	for e := range payloads {
+		go func() {
+			//can probably do something about the responses, for now just logging maybe?
+			_, err := client.sendPayload(tlsConn, payloads[e])
+			if err != nil {
+				failCount++
+			} else {
+				successCount++
+			}
+			if failCount + successCount == len(payloads) {
+				completionChannel <- true
+			}
+		}()
+	}
+	timeoutChannel := make(chan bool, 1)
+	//Wait for all to complete maximum 5 seconds
+	go func() {
+		time.Sleep(time.Second * 5)
+		timeoutChannel <- true
+	}()
+	select {
+	case <-timeoutChannel:
+		return successCount, errors.New("sending all payloads timed out")
+	case <- completionChannel:
+		return successCount, nil
+	}
+	return successCount, err
+}
+
+func (client *Client) sendPayload(tlsConn *tls.Conn, payload []byte) (resp *PushNotificationResponse, err error) {
 	_, err = tlsConn.Write(payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Create one channel that will serve to handle
 	// timeouts when the notification succeeds.
 	timeoutChannel := make(chan bool, 1)
 	go func() {
-		time.Sleep(time.Millisecond * 10)
+		time.Sleep(time.Millisecond * 100)
 		timeoutChannel <- true
 	}()
 
@@ -162,6 +199,5 @@ func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payload []
 	case <-timeoutChannel:
 		resp.Success = true
 	}
-
-	return err
+	return resp, err
 }
