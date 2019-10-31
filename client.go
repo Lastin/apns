@@ -59,15 +59,15 @@ func NewClient(gateway, certificateFile, keyFile string) (c *Client) {
 func (client *Client) Send(pns []*PushNotification) (resp *PushNotificationResponse, successCount int) {
 	resp = new(PushNotificationResponse)
 
-	payloads := make([][]byte, len(pns))
-	for e := range pns {
-		payload, err := pns[e].ToBytes()
+	var payloads [][]byte
+	for _, pn := range pns {
+		payload, err := pn.ToBytes()
 		if err != nil {
 			resp.Success = false
 			resp.Error = err
 			return
 		}
-		payloads[e] = payload
+		payloads = append(payloads, payload)
 	}
 
 	successCount, err := client.ConnectAndWrite(resp, payloads)
@@ -130,14 +130,14 @@ func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payloads [
 
 	failCount := 0
 	completionChannel := make(chan bool, 1)
-	for e := range payloads {
+	for _, payload := range payloads {
 		go func() {
 			//can probably do something about the responses, for now just logging maybe?
-			_, err := client.sendPayload(tlsConn, payloads[e])
-			if err != nil {
-				failCount++
-			} else {
+			success := client.sendPayload(tlsConn, payload)
+			if success {
 				successCount++
+			} else {
+				failCount++
 			}
 			if failCount+successCount == len(payloads) {
 				completionChannel <- true
@@ -159,10 +159,10 @@ func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payloads [
 	return successCount, err
 }
 
-func (client *Client) sendPayload(tlsConn *tls.Conn, payload []byte) (resp *PushNotificationResponse, err error) {
-	_, err = tlsConn.Write(payload)
+func (client *Client) sendPayload(tlsConn *tls.Conn, payload []byte) bool {
+	_, err := tlsConn.Write(payload)
 	if err != nil {
-		return nil, err
+		return false
 	}
 
 	// Create one channel that will serve to handle
@@ -182,21 +182,11 @@ func (client *Client) sendPayload(tlsConn *tls.Conn, payload []byte) (resp *Push
 		responseChannel <- buffer
 	}()
 
-	// First one back wins!
-	// The data structure for an APN response is as follows:
-	//
-	// command    -> 1 byte
-	// status     -> 1 byte
-	// identifier -> 4 bytes
-	//
-	// The first byte will always be set to 8.
+	//First to respond wins
 	select {
-	case r := <-responseChannel:
-		resp.Success = false
-		resp.AppleResponse = ApplePushResponses[r[1]]
-		err = errors.New(resp.AppleResponse)
+	case <-responseChannel:
+		return false
 	case <-timeoutChannel:
-		resp.Success = true
+		return true
 	}
-	return resp, err
 }
