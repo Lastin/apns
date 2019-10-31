@@ -131,18 +131,16 @@ func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payloads [
 	failCount := 0
 	completionChannel := make(chan bool, 1)
 	for _, payload := range payloads {
-		go func() {
-			//can probably do something about the responses, for now just logging maybe?
-			success := client.sendPayload(tlsConn, payload)
-			if success {
-				successCount++
-			} else {
-				failCount++
-			}
-			if failCount+successCount == len(payloads) {
-				completionChannel <- true
-			}
-		}()
+		//can probably do something about the responses, for now just logging maybe?
+		success := client.sendPayload(tlsConn, payload)
+		if success {
+			successCount++
+		} else {
+			failCount++
+		}
+		if failCount+successCount == len(payloads) {
+			completionChannel <- true
+		}
 	}
 	timeoutChannel := make(chan bool, 1)
 	//Wait for all to complete maximum 5 seconds
