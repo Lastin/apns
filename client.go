@@ -12,7 +12,7 @@ var _ APNSClient = &Client{}
 
 // APNSClient is an APNS client.
 type APNSClient interface {
-	ConnectAndWrite(resp *PushNotificationResponse, payloads [][]byte) (err error)
+	ConnectAndWrite(resp *PushNotificationResponse, payloads [][]byte) (successCount int, err error)
 	Send(pn []*PushNotification) (resp *PushNotificationResponse, successCount int)
 }
 
@@ -56,12 +56,12 @@ func NewClient(gateway, certificateFile, keyFile string) (c *Client) {
 
 // Send connects to the APN service and sends your push notification.
 // Remember that if the submission is successful, Apple won't reply.
-func (client *Client) Send(pn []*PushNotification) (resp *PushNotificationResponse, successCount int) {
+func (client *Client) Send(pns []*PushNotification) (resp *PushNotificationResponse, successCount int) {
 	resp = new(PushNotificationResponse)
 
-	payloads := make([][]byte, len(pn))
-	for e := range pn {
-		payload, err := pn[e].ToBytes()
+	payloads := make([][]byte, len(pns))
+	for e := range pns {
+		payload, err := pns[e].ToBytes()
 		if err != nil {
 			resp.Success = false
 			resp.Error = err
@@ -69,7 +69,6 @@ func (client *Client) Send(pn []*PushNotification) (resp *PushNotificationRespon
 		}
 		payloads[e] = payload
 	}
-
 
 	successCount, err := client.ConnectAndWrite(resp, payloads)
 	if err != nil {
@@ -140,7 +139,7 @@ func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payloads [
 			} else {
 				successCount++
 			}
-			if failCount + successCount == len(payloads) {
+			if failCount+successCount == len(payloads) {
 				completionChannel <- true
 			}
 		}()
@@ -154,7 +153,7 @@ func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payloads [
 	select {
 	case <-timeoutChannel:
 		return successCount, errors.New("sending all payloads timed out")
-	case <- completionChannel:
+	case <-completionChannel:
 		return successCount, nil
 	}
 	return successCount, err
